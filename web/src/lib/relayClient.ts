@@ -1,5 +1,11 @@
-const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost'
-const RELAY_URL = (import.meta.env.VITE_RELAY_URL as string | undefined) ?? `ws://${host}:3001`
+const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const hostString = typeof window !== 'undefined' && window.location.host ? window.location.host : 'localhost:3001';
+
+// If we are running on Vite's dev server (5173), force the relay port to 3001
+const isViteDev = hostString.includes('5173');
+const targetHost = isViteDev ? hostString.replace('5173', '3001') : hostString;
+
+const RELAY_URL = (import.meta.env.VITE_RELAY_URL as string | undefined) ?? `${protocol}//${targetHost}`
 
 export interface Credentials {
   host: string

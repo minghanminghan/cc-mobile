@@ -43,8 +43,7 @@ COPY --from=builder /app/web/dist ./web/dist
 COPY --from=builder /app/relay/src ./relay/src
 COPY --from=builder /app/relay/tsconfig.json ./relay/
 
-# Expose Web port and Relay WebSocket port
-EXPOSE 5173
+# Expose the unified Web and Relay port
 EXPOSE 3001
 
 # Copy the start script and make it executable

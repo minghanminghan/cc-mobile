@@ -53,6 +53,7 @@ To launch the local development environment:
 git clone https://github.com/minghanminghan/cc-mobile.git
 
 # Start both the Node WebSocket relay and the Vite Web frontend concurrently
+npm install
 npm run dev
 
 # In a separate terminal, launch the React Native native bundler

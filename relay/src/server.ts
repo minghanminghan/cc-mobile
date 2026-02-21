@@ -1,4 +1,6 @@
 import http from 'http'
+import express from 'express'
+import path from 'path'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { RawData } from 'ws'
 import { Client, type ConnectConfig } from 'ssh2'
@@ -27,7 +29,18 @@ interface ResizeMessage {
   rows: number
 }
 
-const server = http.createServer()
+const app = express()
+
+// Serve the compiled React frontend static files
+const webDistPath = path.join(__dirname, '../../web/dist')
+app.use(express.static(webDistPath))
+
+// Catch-all route for SPA routing (returns index.html)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(webDistPath, 'index.html'))
+})
+
+const server = http.createServer(app)
 const wss = new WebSocketServer({ server })
 
 wss.on('connection', (ws: WebSocket) => {

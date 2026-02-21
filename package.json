@@ -10,10 +10,9 @@
     "dev:relay": "npm run dev -w relay",
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w web",
-    "start": "concurrently -n relay,web -c cyan,green \"npm run start -w relay\" \"npx serve -s web/dist -l 5173\""
+    "start": "npm run start -w relay"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0",
-    "serve": "^14.2.4"
+    "concurrently": "^9.1.0"
   }
 }
