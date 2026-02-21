@@ -36,8 +36,12 @@ const webDistPath = path.join(__dirname, '../../web/dist')
 app.use(express.static(webDistPath))
 
 // Catch-all route for SPA routing (returns index.html)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(webDistPath, 'index.html'))
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    res.sendFile(path.join(webDistPath, 'index.html'))
+  } else {
+    next()
+  }
 })
 
 const server = http.createServer(app)
