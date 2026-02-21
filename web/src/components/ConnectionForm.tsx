@@ -17,7 +17,6 @@ export default function ConnectionForm({ onConnect, onCancel, initialValues, err
   const [authType, setAuthType] = useState<'password' | 'key'>('password')
   const [password, setPassword] = useState('')
   const [privateKey, setPrivateKey] = useState('')
-  const [shell, setShell] = useState<'bash' | 'wsl'>('bash')
   const [projectPath, setProjectPath] = useState('')
   const [saveProfile, setSaveProfile] = useState(true)
 
@@ -29,10 +28,6 @@ export default function ConnectionForm({ onConnect, onCancel, initialValues, err
       setPort(initialValues.port?.toString() ?? '22')
       setUsername(initialValues.username ?? '')
       setAuthType(initialValues.authType ?? 'password')
-      // Only set shell if it's explicitly provided, otherwise default to bash
-      if (initialValues.shell) {
-        setShell(initialValues.shell)
-      }
       setProjectPath(initialValues.projectPath ?? '')
       // Load stored credentials if available (passed in via initialValues from App.tsx which merged them)
       if ('password' in initialValues && (initialValues as any).password) {
@@ -67,7 +62,6 @@ export default function ConnectionForm({ onConnect, onCancel, initialValues, err
         port: portNum,
         username,
         authType,
-        shell,
         projectPath: projectPath.trim() || undefined,
       }
 
@@ -88,7 +82,6 @@ export default function ConnectionForm({ onConnect, onCancel, initialValues, err
       port: portNum,
       username,
       ...(authType === 'password' ? { password } : { privateKey }),
-      shell,
       projectPath: projectPath.trim() || undefined,
     })
   }
@@ -213,36 +206,6 @@ export default function ConnectionForm({ onConnect, onCancel, initialValues, err
                 className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-zinc-500 placeholder-zinc-600 resize-none"
               />
             )}
-          </div>
-
-
-
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-zinc-400 text-xs mb-1.5 uppercase tracking-wider">Target Host</label>
-              <div className="flex rounded overflow-hidden border border-zinc-700">
-                <button
-                  type="button"
-                  onClick={() => setShell('bash')}
-                  className={`flex-1 py-1.5 text-xs transition-colors cursor-pointer ${shell === 'bash'
-                    ? 'bg-zinc-700 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-300'
-                    }`}
-                >
-                  Linux/Mac
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShell('wsl')}
-                  className={`flex-1 py-1.5 text-xs transition-colors cursor-pointer ${shell === 'wsl'
-                    ? 'bg-zinc-700 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-300'
-                    }`}
-                >
-                  Windows (requires WSL)
-                </button>
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center gap-2">

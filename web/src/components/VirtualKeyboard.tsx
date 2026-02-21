@@ -66,9 +66,9 @@ export default function VirtualKeyboard() {
                     <button
                         key={k.label}
                         onClick={() => handleKeyPress(k)}
-                        className={`flex-shrink-0 px-4 py-2.5 rounded text-xs font-bold font-mono transition-colors active:scale-95 ${isActive
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+                        className={`flex-shrink-0 px-4 py-2.5 rounded text-xs font-bold font-mono transition-colors cursor-pointer active:scale-95 ${isActive
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
                             }`}
                     >
                         {k.label}

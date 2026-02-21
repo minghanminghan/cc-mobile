@@ -8,7 +8,8 @@ export interface Profile {
   port: number
   username: string
   authType: AuthType
-  shell?: 'bash' | 'wsl'
+  password?: string
+  privateKey?: string
   projectPath?: string
 }
 

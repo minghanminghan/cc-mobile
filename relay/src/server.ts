@@ -19,7 +19,6 @@ interface ConnectMessage {
   username: string
   password?: string
   privateKey?: string
-  shell?: 'bash' | 'wsl'
   projectPath?: string
 }
 
@@ -134,7 +133,7 @@ wss.on('connection', (ws: WebSocket) => {
       return
     }
 
-    log(`[connect] Connecting to ${msg.username}@${msg.host}:${msg.port ?? 22} (Shell: ${msg.shell ?? 'bash'})`)
+    log(`[connect] Connecting to ${msg.username}@${msg.host}:${msg.port ?? 22}`)
 
     ssh = new Client()
 
@@ -192,9 +191,6 @@ wss.on('connection', (ws: WebSocket) => {
           ? `tmux new-session -A -D -t . -c "${msg.projectPath}" -s cc \\; set -g mouse on`
           : `tmux new-session -A -D -s cc \\; set -g mouse on`
 
-        if (msg.shell === 'wsl') {
-          cmd = `wsl ${cmd}`
-        }
         log(`[ssh] Spawning command: ${cmd}`)
         ssh!.exec(cmd, { pty: { term, rows, cols } }, onShellReady as any) // exec with pty
       }

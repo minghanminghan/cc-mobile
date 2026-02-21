@@ -337,43 +337,43 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
             left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`
           }}
         >
-          <button onTouchEnd={(e) => handleMenuAction(e, 'paste')} onClick={(e) => handleMenuAction(e, 'paste')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'paste')} onClick={(e) => handleMenuAction(e, 'paste')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             Paste
           </button>
 
           <div className="h-px bg-zinc-800 my-1 w-full" />
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'split-h')} onClick={(e) => handleMenuAction(e, 'split-h')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'split-h')} onClick={(e) => handleMenuAction(e, 'split-h')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
             Horizontal Split
           </button>
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'split-v')} onClick={(e) => handleMenuAction(e, 'split-v')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'split-v')} onClick={(e) => handleMenuAction(e, 'split-v')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
             Vertical Split
           </button>
 
           <div className="h-px bg-zinc-800 my-1 w-full" />
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'swap-up')} onClick={(e) => handleMenuAction(e, 'swap-up')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'swap-up')} onClick={(e) => handleMenuAction(e, 'swap-up')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
             Swap Up
           </button>
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'swap-down')} onClick={(e) => handleMenuAction(e, 'swap-down')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'swap-down')} onClick={(e) => handleMenuAction(e, 'swap-down')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             Swap Down
           </button>
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'zoom')} onClick={(e) => handleMenuAction(e, 'zoom')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'zoom')} onClick={(e) => handleMenuAction(e, 'zoom')} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
             Zoom
           </button>
 
           <div className="h-px bg-zinc-800 my-1 w-full" />
 
-          <button onTouchEnd={(e) => handleMenuAction(e, 'kill')} onClick={(e) => handleMenuAction(e, 'kill')} className="flex items-center gap-3 px-4 py-2.5 text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors text-left w-full">
+          <button onTouchEnd={(e) => handleMenuAction(e, 'kill')} onClick={(e) => handleMenuAction(e, 'kill')} className="flex items-center gap-3 px-4 py-2.5 text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors cursor-pointer text-left w-full">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             Kill
           </button>

@@ -44,7 +44,6 @@ export default function App() {
         host: profile.host,
         port: profile.port,
         username: profile.username,
-        shell: profile.shell,
         projectPath: profile.projectPath,
         ...creds,
       })

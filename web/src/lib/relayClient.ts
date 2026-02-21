@@ -13,7 +13,6 @@ export interface Credentials {
   username: string
   password?: string
   privateKey?: string
-  shell?: 'bash' | 'wsl'
   projectPath?: string
 }
 

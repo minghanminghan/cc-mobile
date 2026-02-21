@@ -28,7 +28,7 @@ export default function ProfileList({ onConnect, onEdit, onNew }: Props) {
           <h2 className="text-xl font-semibold text-white tracking-tight">Projects</h2>
           <button
             onClick={onNew}
-            className="bg-white text-black px-4 py-2 rounded text-sm font-medium hover:bg-zinc-200 transition-colors"
+            className="bg-white text-black px-4 py-2 rounded text-sm font-medium hover:bg-zinc-200 cursor-pointer transition-colors"
           >
             New Project
           </button>
