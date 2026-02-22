@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { StyleSheet, StatusBar, Platform, View, TouchableOpacity, Text, ScrollView } from 'react-native';
+import { StyleSheet, StatusBar, Platform, View, TouchableOpacity, Text, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import type { RootStackParamList } from '../../App';
 
 // In development, you usually need to point to your computer's local IP address
@@ -32,6 +33,41 @@ export default function TerminalScreen({ route, navigation }: Props) {
     const [ctrlActive, setCtrlActive] = useState(false);
     const [altActive, setAltActive] = useState(false);
     const [shiftActive, setShiftActive] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [preview, setPreview] = useState<string | null>(null);
+
+    useSpeechRecognitionEvent('start', () => setIsListening(true));
+    useSpeechRecognitionEvent('end', () => setIsListening(false));
+    useSpeechRecognitionEvent('error', () => setIsListening(false));
+    useSpeechRecognitionEvent('result', (event) => {
+        const transcript = event.results[0]?.transcript;
+        if (event.isFinal && transcript) {
+            setPreview(transcript);
+        }
+    });
+
+    const startListening = async () => {
+        const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+        if (!granted) return;
+        ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
+    };
+
+    const stopListening = () => {
+        ExpoSpeechRecognitionModule.stop();
+    };
+
+    const sendPreview = () => {
+        if (preview !== null) {
+            const js = `
+                if (window.__INJECT_TERMINAL_DATA__) {
+                    window.__INJECT_TERMINAL_DATA__(${JSON.stringify(preview)});
+                }
+                true;
+            `;
+            webviewRef.current?.injectJavaScript(js);
+        }
+        setPreview(null);
+    };
 
     // We inject the entire profile object (including passwords/private keys) into the window
     // The web app will read this on boot and immediately connect.
@@ -105,6 +141,28 @@ export default function TerminalScreen({ route, navigation }: Props) {
                 showsVerticalScrollIndicator={false}
                 scalesPageToFit={Platform.OS === 'android'}
             />
+
+            {/* Voice preview overlay — appears above keyboard when transcript is ready */}
+            {preview !== null && (
+                <View style={styles.previewOverlay}>
+                    <TextInput
+                        style={styles.previewInput}
+                        value={preview}
+                        onChangeText={setPreview}
+                        multiline
+                        autoFocus
+                    />
+                    <View style={styles.previewButtons}>
+                        <TouchableOpacity style={[styles.previewBtn, styles.cancelPreviewBtn]} onPress={() => setPreview(null)}>
+                            <Text style={styles.cancelPreviewText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.previewBtn, styles.sendPreviewBtn]} onPress={sendPreview}>
+                            <Text style={styles.sendPreviewText}>Send</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+
             {/* Virtual Keyboard Row */}
             <View style={styles.keyboardRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.keyboardScroll}>
@@ -127,6 +185,15 @@ export default function TerminalScreen({ route, navigation }: Props) {
                             ]}>{k.label}</Text>
                         </TouchableOpacity>
                     ))}
+
+                    {/* Mic button */}
+                    <TouchableOpacity
+                        style={[styles.keyBtn, isListening && styles.keyBtnListening]}
+                        onPress={isListening ? stopListening : startListening}
+                        accessibilityLabel={isListening ? 'Stop listening' : 'Start voice input'}
+                    >
+                        <Text style={[styles.keyText, isListening && styles.keyTextActive]}>🎙</Text>
+                    </TouchableOpacity>
                 </ScrollView>
             </View>
         </SafeAreaView>
@@ -162,6 +229,53 @@ const styles = StyleSheet.create({
     },
     keyBtnActive: {
         backgroundColor: '#3b82f6', // blue-500
+    },
+    keyBtnListening: {
+        backgroundColor: '#dc2626', // red-600
+    },
+    previewOverlay: {
+        backgroundColor: '#18181b', // zinc-900
+        borderTopWidth: 1,
+        borderTopColor: '#3f3f46', // zinc-700
+        padding: 12,
+        gap: 8,
+    },
+    previewInput: {
+        backgroundColor: '#27272a', // zinc-800
+        borderWidth: 1,
+        borderColor: '#3f3f46', // zinc-700
+        borderRadius: 6,
+        padding: 10,
+        color: '#f4f4f5', // zinc-100
+        fontSize: 14,
+        minHeight: 60,
+        textAlignVertical: 'top',
+    },
+    previewButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 8,
+    },
+    previewBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+    },
+    cancelPreviewBtn: {
+        backgroundColor: '#27272a', // zinc-800
+    },
+    cancelPreviewText: {
+        color: '#d4d4d8', // zinc-300
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    sendPreviewBtn: {
+        backgroundColor: '#3b82f6', // blue-500
+    },
+    sendPreviewText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '600',
     },
     keyText: {
         color: '#e4e4e7', // zinc-200
