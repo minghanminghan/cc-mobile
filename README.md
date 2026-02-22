@@ -1,6 +1,6 @@
 # mobile-terminal
 
-Use your terminal coding agents from any browser or phone. SSH into your dev server and get a full interactive terminal -- no local dev environment required. mobile-terminal supports Claude Code, Codex CLI, Gemini CLI, Opencode.
+Use your terminal coding agents from any browser or phone. SSH into your server and get a full interactive terminal -- no local dev environment required. This project additionally offers custom hooks for Claude Code, Codex CLI, Gemini CLI, Opencode that feed back into the app and notify you when coding agents finish their tasks.
 
 ---
 
@@ -22,12 +22,12 @@ Supported tools and how each integrates:
 Access the install command from the **Settings → AI Agent Hooks** menu inside the terminal, or see the [AI Agent Hooks](#ai-agent-hooks-optional) section below.
 
 ### Seamless Session Continuity
-Start work on your laptop, close the browser, reopen on your phone, and pick up exactly where you left off. The relay uses `tmux new-session -A -D` to attach existing sessions and resize them to fit whatever screen is connecting.
+Start work on your laptop, close the browser, reopen on your phone, and pick up exactly where you left off. The relay uses `tmux new-session -A -D` to attach existing sessions.
 
 ### Connection Profiles
 Save SSH credentials and project paths for one-tap reconnect. Secrets (passwords, private keys) are stored in `sessionStorage` on web (cleared when the tab closes) and in the platform keychain on mobile (iOS Keychain / Android Keystore) -- never on the relay server.
 
-### Touch-Optimized UX
+### Mobile-Optimized UX
 - **Virtual control row** -- scrollable bar with ESC, TAB, CTRL, ALT, SHIFT, DEL, and arrow keys
 - **Long-press context menu** -- trigger tmux pane operations (split horizontal/vertical, swap, zoom, kill) without keyboard shortcuts
 - **Native mouse mode** -- drag tmux pane borders with your finger to resize

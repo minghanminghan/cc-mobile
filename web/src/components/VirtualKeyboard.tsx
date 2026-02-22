@@ -133,6 +133,25 @@ export default function VirtualKeyboard() {
 
             {/* Virtual keyboard row */}
             <div className="md:hidden flex overflow-x-auto bg-zinc-900 border-t border-zinc-800 p-2 gap-2 shrink-0 hide-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {/* Microphone icon */}
+                {supported && (
+                    <button
+                        onClick={isListening ? stopListening : startListening}
+                        className={`flex-shrink-0 px-3 py-2.5 rounded transition-colors cursor-pointer active:scale-95 relative ${isListening
+                            ? 'bg-red-600 text-white'
+                            : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+                            }`}
+                        aria-label={isListening ? 'Stop listening' : 'Start voice input'}
+                    >
+                        {isListening && (
+                            <span className="absolute inset-0 rounded animate-ping bg-red-500 opacity-50" />
+                        )}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="relative z-10">
+                            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm7 8a1 1 0 0 1 1 1 8 8 0 0 1-7 7.938V21h2a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2h2v-1.062A8 8 0 0 1 4 12a1 1 0 0 1 2 0 6 6 0 0 0 12 0 1 1 0 0 1 1-1z"/>
+                        </svg>
+                    </button>
+                )}
+                {/* Control Keys */}
                 {VIRTUAL_KEYS.map((k) => {
                     const isActive = (k.toggle === 'ctrl' && ctrlActive) ||
                         (k.toggle === 'alt' && altActive) ||
@@ -151,24 +170,6 @@ export default function VirtualKeyboard() {
                         </button>
                     );
                 })}
-
-                {supported && (
-                    <button
-                        onClick={isListening ? stopListening : startListening}
-                        className={`flex-shrink-0 px-3 py-2.5 rounded transition-colors cursor-pointer active:scale-95 relative ${isListening
-                            ? 'bg-red-600 text-white'
-                            : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
-                            }`}
-                        aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-                    >
-                        {isListening && (
-                            <span className="absolute inset-0 rounded animate-ping bg-red-500 opacity-50" />
-                        )}
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="relative z-10">
-                            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm7 8a1 1 0 0 1 1 1 8 8 0 0 1-7 7.938V21h2a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2h2v-1.062A8 8 0 0 1 4 12a1 1 0 0 1 2 0 6 6 0 0 0 12 0 1 1 0 0 1 1-1z"/>
-                        </svg>
-                    </button>
-                )}
             </div>
         </>
     );
