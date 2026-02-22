@@ -7,6 +7,19 @@ import { Client, type ConnectConfig } from 'ssh2'
 import type { ClientChannel } from 'ssh2'
 import { SocksClient } from 'socks'
 
+// When stdout is piped (Docker / DigitalOcean) Node buffers output and log
+// lines can disappear or arrive late. Force synchronous writes so every
+// console.log flushes immediately.
+if (process.stdout.isTTY === false) {
+  const _write = process.stdout.write.bind(process.stdout)
+  process.stdout.write = (chunk: any, ...args: any[]) => {
+    const result = _write(chunk, ...args)
+    return result
+  }
+  // @ts-ignore — undocumented but reliable on all Node versions
+  if (process.stdout._handle?.setBlocking) process.stdout._handle.setBlocking(true)
+}
+
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
 
 // Tailscale assigns IPs in the CGNAT range 100.64.0.0/10 (100.64.x.x – 100.127.x.x).
@@ -204,8 +217,8 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         let cmd = msg.projectPath
-          ? `tmux new-session -A -D -t . -c "${msg.projectPath}" -s cc \\; set -g mouse on`
-          : `tmux new-session -A -D -s cc \\; set -g mouse on`
+          ? `tmux new-session -A -D -t . -c "${msg.projectPath}" -s cc \\; set -g mouse on \\; set -g allow-passthrough on`
+          : `tmux new-session -A -D -s cc \\; set -g mouse on \\; set -g allow-passthrough on`
 
         log(`[ssh] Spawning command: ${cmd}`)
         ssh!.exec(cmd, { pty: { term, rows, cols } }, onShellReady as any) // exec with pty
@@ -251,9 +264,14 @@ wss.on('connection', (ws: WebSocket) => {
 
     // Tailscale userspace networking has no kernel routes for 100.x.x.x —
     // connect through Tailscale's local SOCKS5 proxy and hand the socket to ssh2.
-    // TAILSCALE_SOCKS5 is only set in Docker (start.sh); in native dev the OS
-    // already routes Tailscale IPs through the kernel TUN device.
-    const socks5Addr = process.env.TAILSCALE_SOCKS5
+    // Resolution order:
+    //   1. TAILSCALE_SOCKS5 — explicit address (e.g. localhost:1055)
+    //   2. TAILSCALE_AUTH_KEY set — tailscaled was started by start.sh with
+    //      --socks5-server=localhost:1055, so we know the default port is live
+    //   3. Neither set — native dev, OS kernel routes Tailscale IPs directly
+    const socks5Addr =
+      process.env.TAILSCALE_SOCKS5 ??
+      (process.env.TAILSCALE_AUTH_KEY ? 'localhost:1055' : undefined)
     if (isTailscaleIP(msg.host)) {
       if (socks5Addr) {
         const [proxyHost, proxyPortStr] = socks5Addr.split(':')

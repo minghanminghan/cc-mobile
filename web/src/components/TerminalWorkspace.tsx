@@ -14,8 +14,19 @@ export default function TerminalWorkspace({ credentials, onDisconnect }: Props) 
     const [showMenu, setShowMenu] = useState(false)
     const [showSetup, setShowSetup] = useState(false)
     const [copied, setCopied] = useState(false)
+    const [connError, setConnError] = useState<string | undefined>()
     const menuRef = useRef<HTMLDivElement>(null)
     const modalRef = useRef<HTMLDivElement>(null)
+
+    // Intercept disconnects that carry an error reason so we can show the
+    // message before navigating away. Manual disconnects (no reason) propagate immediately.
+    function handleDisconnect(reason?: string) {
+        if (reason) {
+            setConnError(reason)
+        } else {
+            onDisconnect()
+        }
+    }
 
     const installCmd = `curl -fsSL ${window.location.origin}/install.sh | bash`
 
@@ -89,7 +100,7 @@ export default function TerminalWorkspace({ credentials, onDisconnect }: Props) 
                             if ((window as any).ReactNativeWebView) {
                                 (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'DISCONNECT' }));
                             } else {
-                                onDisconnect();
+                                handleDisconnect();
                             }
                         }}
                         className="text-red-400 hover:text-red-300 text-xs px-3 py-1 rounded border border-red-900/50 hover:bg-red-900/20 transition-colors cursor-pointer"
@@ -99,20 +110,45 @@ export default function TerminalWorkspace({ credentials, onDisconnect }: Props) 
                 </div>
             </div>
 
-            {/* AI agent signal banner — only visible when a hook fires */}
+            {/* AI agent signal toast — fixed overlay, always mounted */}
             <SignalBanner />
 
-            {/* Main Workspace Area */}
-            <div className="flex-1 relative overflow-hidden min-h-0">
-                <Terminal
-                    credentials={credentials}
-                    onDisconnect={onDisconnect}
-                    onClientReady={(client: RelayClient) => clientRef.current = client}
-                />
-            </div>
+            {connError ? (
+                /* Connection error panel — replaces terminal so there's nothing behind it */
+                <div className="flex-1 flex items-center justify-center bg-zinc-950 px-6">
+                    <div className="w-full max-w-md bg-zinc-900 border border-red-900/50 rounded-xl p-6 flex flex-col gap-4">
+                        <div className="flex items-start gap-3">
+                            <svg className="text-red-400 shrink-0 mt-0.5" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-zinc-100 text-sm font-semibold">Connection failed</span>
+                                <span className="text-zinc-400 text-xs font-mono leading-relaxed break-all select-text">{connError}</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => onDisconnect(connError)}
+                            className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium py-2.5 rounded transition-colors cursor-pointer"
+                        >
+                            Back
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* Main Workspace Area */}
+                    <div className="flex-1 relative overflow-hidden min-h-0">
+                        <Terminal
+                            credentials={credentials}
+                            onDisconnect={handleDisconnect}
+                            onClientReady={(client: RelayClient) => clientRef.current = client}
+                        />
+                    </div>
 
-            {/* Virtual Control Row for Mobile Web Browsers */}
-            <VirtualKeyboard />
+                    {/* Virtual Control Row for Mobile Web Browsers */}
+                    <VirtualKeyboard />
+                </>
+            )}
 
             {/* AI Hooks Setup Modal */}
             {showSetup && (

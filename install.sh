@@ -24,17 +24,17 @@ if [ "$1" = "--list" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   # echo ""
   echo "Available integrations:"
   echo ""
-  echo "  Claude Code     — adds Stop/Notification hooks to ~/.claude/settings.json"
+  echo "  Claude Code     — adds Stop hook to ~/.claude/settings.json"
   echo "                    use 'claude' as normal"
   echo ""
   echo "  Codex CLI       — enables OSC 9 notifications in ~/.codex/config.toml"
   echo "                    use 'codex' as normal"
   echo ""
-  echo "  Gemini CLI      — installs a 'mobile-gemini' wrapper script"
-  echo "                    use 'mobile-gemini' instead of 'gemini'"
+  echo "  Gemini CLI      — adds AfterAgent hook to ~/.gemini/settings.json"
+  echo "                    use 'gemini' as normal"
   echo ""
-  echo "  OpenCode        — installs a 'mobile-opencode' wrapper script"
-  echo "                    use 'mobile-opencode' instead of 'opencode'"
+  echo "  OpenCode        — installs a plugin in ~/.config/opencode/plugins/"
+  echo "                    use 'opencode' as normal"
   echo ""
   echo "The script detects which tools are installed and configures only those."
   echo "Safe to re-run — idempotent."
@@ -51,8 +51,30 @@ mkdir -p "$INSTALL_DIR"
 cat > "$NOTIFY_SCRIPT" << 'EOF'
 #!/bin/sh
 # mobile-notify: emit an OSC 9999 signal readable by mobile-terminal
-# Usage: mobile-notify '{"type":"stop","tool":"claude"}'
-printf '\033]9999;%s\007' "${1:-{\"type\":\"stop\"}}"
+# Usage: mobile-notify --type=stop --tool=claude
+TYPE="stop"
+TOOL=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --type=*) TYPE="${arg#--type=}" ;;
+    --tool=*) TOOL="${arg#--tool=}" ;;
+  esac
+done
+
+if [ -n "$TOOL" ]; then
+  PAYLOAD="{\"type\":\"$TYPE\",\"tool\":\"$TOOL\"}"
+else
+  PAYLOAD="{\"type\":\"$TYPE\"}"
+fi
+
+# When running inside tmux, wrap in a DCS passthrough so tmux forwards
+# the sequence to the outer terminal instead of silently dropping it.
+if [ -n "$TMUX" ]; then
+  printf '\033Ptmux;\033\033]9999;%s\007\033\\' "$PAYLOAD" > /dev/tty 2>/dev/null || printf '\033Ptmux;\033\033]9999;%s\007\033\\' "$PAYLOAD"
+else
+  printf '\033]9999;%s\007' "$PAYLOAD" > /dev/tty 2>/dev/null || printf '\033]9999;%s\007' "$PAYLOAD"
+fi
 EOF
 chmod +x "$NOTIFY_SCRIPT"
 echo "  [success] Installed mobile-notify → $NOTIFY_SCRIPT"
@@ -86,20 +108,32 @@ with open(path) as f:
     cfg = json.load(f)
 
 hooks = cfg.setdefault("hooks", {})
-to_add = [
-    ("Stop",         '{"type":"stop","tool":"claude"}'),
-    ("Notification", '{"type":"notify","tool":"claude"}'),
-]
-for event, payload in to_add:
-    entries = hooks.setdefault(event, [])
-    cmd = f"mobile-notify '{payload}'"
-    already = any(
-        h.get("command", "") == cmd
-        for entry in entries
-        for h in entry.get("hooks", [])
-    )
-    if not already:
-        entries.append({"hooks": [{"type": "command", "command": cmd}]})
+
+stop_cmd = "mobile-notify --type=stop --tool=claude"
+
+# Remove any old JSON-format commands from previous installs
+old_cmds = {
+    "mobile-notify '{\"type\":\"stop\",\"tool\":\"claude\"}'",
+    "mobile-notify '{\"type\":\"notify\",\"tool\":\"claude\"}'",
+}
+for event in ("Stop", "Notification"):
+    if event in hooks:
+        hooks[event] = [
+            e for e in hooks[event]
+            if not any(h.get("command", "") in old_cmds for h in e.get("hooks", []))
+        ]
+        if not hooks[event]:
+            del hooks[event]
+
+# Configure Stop hook only (task completion)
+entries = hooks.setdefault("Stop", [])
+already = any(
+    h.get("command", "") == stop_cmd
+    for entry in entries
+    for h in entry.get("hooks", [])
+)
+if not already:
+    entries.append({"hooks": [{"type": "command", "command": stop_cmd}]})
 
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
@@ -126,28 +160,59 @@ if command -v codex > /dev/null 2>&1; then
   fi
 fi
 
-# ── 5. Gemini CLI wrapper ─────────────────────────────────────────────────────
+# ── 5. Gemini CLI native AfterAgent hook ────────────────────────────────────
 if command -v gemini > /dev/null 2>&1; then
-  GEMINI_WRAPPER="$INSTALL_DIR/mobile-gemini"
-  cat > "$GEMINI_WRAPPER" << 'EOF'
-#!/bin/sh
-gemini "$@"
-mobile-notify '{"type":"stop","tool":"gemini"}'
-EOF
-  chmod +x "$GEMINI_WRAPPER"
-  echo "  [success] Gemini CLI wrapper installed → use 'mobile-gemini' instead of 'gemini'"
+  GEMINI_SETTINGS="$HOME/.gemini/settings.json"
+  mkdir -p "$HOME/.gemini"
+  [ -f "$GEMINI_SETTINGS" ] || echo '{}' > "$GEMINI_SETTINGS"
+
+  python3 - "$GEMINI_SETTINGS" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (ValueError, IOError):
+    cfg = {}
+
+hooks = cfg.setdefault("hooks", {})
+cmd = "mobile-notify --type=stop --tool=gemini"
+old_cmd = "mobile-notify '{\"type\":\"stop\",\"tool\":\"gemini\"}'"
+entries = hooks.setdefault("AfterAgent", [])
+# Migrate old JSON-format command
+entries[:] = [e for e in entries if e.get("command", "") != old_cmd]
+already = any(e.get("command", "") == cmd for e in entries)
+if not already:
+    entries.append({"command": cmd})
+
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+  echo "  [success] Gemini CLI AfterAgent hook configured → $GEMINI_SETTINGS"
 fi
 
-# ── 6. OpenCode wrapper ───────────────────────────────────────────────────────
+# ── 6. OpenCode plugin ────────────────────────────────────────────────────────
 if command -v opencode > /dev/null 2>&1; then
-  OPENCODE_WRAPPER="$INSTALL_DIR/mobile-opencode"
-  cat > "$OPENCODE_WRAPPER" << 'EOF'
-#!/bin/sh
-opencode "$@"
-mobile-notify '{"type":"stop","tool":"opencode"}'
+  OPENCODE_PLUGIN_DIR="$HOME/.config/opencode/plugins"
+  mkdir -p "$OPENCODE_PLUGIN_DIR"
+  cat > "$OPENCODE_PLUGIN_DIR/mobile-terminal.js" << 'EOF'
+export const MobileTerminal = async ({ $ }) => {
+  return {
+    // Fires when the agent finishes a task and becomes idle
+    "session.idle": async () => {
+      await $`mobile-notify --type=stop --tool=opencode`
+    },
+    // Fires when the agent asks for user permission
+    "permission.asked": async () => {
+      await $`mobile-notify --type=notify --tool=opencode`
+    },
+    "command.executed": async ({ command }) => {
+      await $`mobile-notify --type=notify --tool=opencode --command="${command}"`
+  }
+}
 EOF
-  chmod +x "$OPENCODE_WRAPPER"
-  echo "  [success] OpenCode wrapper installed → use 'mobile-opencode' instead of 'opencode'"
+  echo "  [success] OpenCode plugin installed → $OPENCODE_PLUGIN_DIR/mobile-terminal.js"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
@@ -167,12 +232,12 @@ else
   echo "  codex           — not detected (install Codex CLI to enable)"
 fi
 if command -v gemini > /dev/null 2>&1; then
-  echo "  mobile-gemini   — use instead of 'gemini' to get completion signals"
+  echo "  gemini          — AfterAgent hook configured, use as normal"
 else
-  echo "  mobile-gemini   — not detected (install Gemini CLI to enable)"
+  echo "  gemini          — not detected (install Gemini CLI to enable)"
 fi
 if command -v opencode > /dev/null 2>&1; then
-  echo "  mobile-opencode — use instead of 'opencode' to get completion signals"
+  echo "  opencode        — plugin installed, use as normal"
 else
-  echo "  mobile-opencode — not detected (install OpenCode to enable)"
+  echo "  opencode        — not detected (install OpenCode to enable)"
 fi

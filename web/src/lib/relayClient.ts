@@ -32,6 +32,13 @@ export function connect(
 
   let pendingResize: { cols: number, rows: number } | null = null
 
+  let closed = false
+  function closeOnce(reason?: string) {
+    if (closed) return
+    closed = true
+    onClose(reason)
+  }
+
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'connect', ...credentials }))
     if (pendingResize) {
@@ -47,7 +54,7 @@ export function connect(
       try {
         const msg = JSON.parse(event.data as string) as { type: string; message?: string }
         if (msg.type === 'error') {
-          onClose(msg.message)
+          closeOnce(msg.message)
         }
       } catch {
         // ignore unexpected text frames
@@ -56,11 +63,11 @@ export function connect(
   }
 
   ws.onclose = (event) => {
-    onClose(event.reason || undefined)
+    closeOnce(event.reason || undefined)
   }
 
   ws.onerror = () => {
-    onClose('Connection error')
+    closeOnce('Connection error')
   }
 
   return {
@@ -75,6 +82,7 @@ export function connect(
       }
     },
     disconnect() {
+      closed = true
       ws.onclose = null
       ws.onerror = null
       ws.onmessage = null

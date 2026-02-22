@@ -14,10 +14,10 @@ When a task completes, a green **Task complete · claude** banner appears at the
 
 Supported tools and how each integrates:
 
-- **Claude Code** — adds `Stop` and `Notification` hooks to `~/.claude/settings.json`. Use `claude` as normal.
+- **Claude Code** — adds a `Stop` hook to `~/.claude/settings.json`. Use `claude` as normal.
 - **Codex CLI** — enables native OSC 9 notifications in `~/.codex/config.toml`. Use `codex` as normal.
-- **Gemini CLI** — installs a `mobile-gemini` wrapper that signals on exit. Use `mobile-gemini` instead of `gemini`.
-- **OpenCode** — installs a `mobile-opencode` wrapper. Use `mobile-opencode` instead of `opencode`.
+- **Gemini CLI** — adds an `AfterAgent` hook to `~/.gemini/settings.json`. Use `gemini` as normal.
+- **OpenCode** — installs a plugin in `~/.config/opencode/plugins/`. Use `opencode` as normal.
 
 Access the install command from the **Settings → AI Agent Hooks** menu inside the terminal, or see the [AI Agent Hooks](#ai-agent-hooks-optional) section below.
 
@@ -283,10 +283,12 @@ docker run -p 3001:3001 \
 
 ## Environment Variables
 
-| Variable             | Default | Description                                             |
-|---                   |---      |---                                                      |
-| `PORT`               | `3001`  | Port the relay and web server listen on                 |
-| `TAILSCALE_AUTH_KEY` | --      | If set, starts Tailscale and joins your Tailnet on boot |
+| Variable             | Default        | Description                                                                                                    |
+|---                   |---             |---                                                                                                             |
+| `PORT`               | `3001`         | Port the relay and web server listen on                                                                        |
+| `TAILSCALE_AUTH_KEY` | --             | If set, starts Tailscale in userspace mode and joins your Tailnet on boot                                      |
+| `TAILSCALE_SOCKS5`   | `localhost:1055` when `TAILSCALE_AUTH_KEY` is set | Override the SOCKS5 proxy address for Tailscale IPs. Only needed if running tailscaled on a non-standard port |
+| `VITE_RELAY_URL`     | auto-detected  | Override the WebSocket relay URL in the browser. Useful in dev when the relay is on a different host than the Vite dev server |
 
 ---
 
@@ -312,9 +314,9 @@ The script detects which tools are installed and configures only those:
 
 | Tool | What it does |
 |---|---|
-| **Claude Code** | Adds `Stop` and `Notification` hooks to `~/.claude/settings.json` — use `claude` as normal |
+| **Claude Code** | Adds `Stop` hook to `~/.claude/settings.json` — use `claude` as normal |
 | **Codex CLI** | Enables OSC 9 notifications in `~/.codex/config.toml` — use `codex` as normal |
-| **Gemini CLI** | Installs a `mobile-gemini` wrapper — use `mobile-gemini` instead of `gemini` |
-| **OpenCode** | Installs a `mobile-opencode` wrapper — use `mobile-opencode` instead of `opencode` |
+| **Gemini CLI** | Adds `AfterAgent` hook to `~/.gemini/settings.json` — use `gemini` as normal |
+| **OpenCode** | Installs a plugin in `~/.config/opencode/plugins/` — use `opencode` as normal |
 
 Safe to re-run. Only touches config for tools that are already installed.

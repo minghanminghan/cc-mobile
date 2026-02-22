@@ -98,28 +98,30 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
         // OSC 9    = Codex CLI native notifications (plain-text payload).
         // xterm.js silently drops unknown OSC codes so no stripping is needed.
         const text = new TextDecoder().decode(chunk)
-        const OSC_RE = /\x1b\](\d+);([^\x07]*)\x07/g
-        for (const match of text.matchAll(OSC_RE)) {
-          const [, code, payload] = match
-          if (code === '9999') {
-            try {
-              const signal = JSON.parse(payload)
-              if ((window as any).ReactNativeWebView) {
-                // Native app: hand off to React Native for a local notification
-                ;(window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'SIGNAL', signal }))
-              } else {
-                window.dispatchEvent(new CustomEvent('CC_SIGNAL', { detail: signal }))
-              }
-            } catch { /* ignore malformed */ }
-          } else if (code === '9') {
-            const signal = { type: 'stop', tool: 'codex', message: payload }
-            if ((window as any).ReactNativeWebView) {
-              ;(window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'SIGNAL', signal }))
-            } else {
-              window.dispatchEvent(new CustomEvent('CC_SIGNAL', { detail: signal }))
-            }
+
+        function dispatchSignal(signal: any) {
+          if ((window as any).ReactNativeWebView) {
+            ;(window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'SIGNAL', signal }))
+          } else {
+            window.dispatchEvent(new CustomEvent('CC_SIGNAL', { detail: signal }))
           }
         }
+
+        function handleOscCode(code: string, payload: string) {
+          if (code === '9999') {
+            try { dispatchSignal(JSON.parse(payload)) } catch { /* ignore malformed */ }
+          } else if (code === '9') {
+            dispatchSignal({ type: 'stop', tool: 'codex', message: payload })
+          }
+        }
+
+        // Raw OSC (direct, no tmux): ESC ] code ; payload BEL
+        const OSC_RE = /\x1b\](\d+);([^\x07]*)\x07/g
+        for (const m of text.matchAll(OSC_RE)) handleOscCode(m[1], m[2])
+
+        // tmux DCS passthrough (allow-passthrough on): ESC P tmux ; ESC ESC ] code ; payload BEL ESC \
+        const DCS_RE = /\x1bPtmux;\x1b\x1b\](\d+);([^\x07]*)\x07\x1b\\/g
+        for (const m of text.matchAll(DCS_RE)) handleOscCode(m[1], m[2])
         term.write(chunk)
       },
       (reason) => onDisconnect(reason)

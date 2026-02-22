@@ -78,6 +78,7 @@ export default function App() {
   return (
     <ProfileList
       onConnect={handleProfileConnect}
+      error={error}
       onEdit={(profile) => {
         const creds = getCredentials(profile.id)
         setEditingProfile({ ...profile, ...creds } as Profile)
