@@ -16,7 +16,13 @@ const VIRTUAL_KEYS: Array<{ label: string, value?: string, toggle?: 'ctrl' | 'al
 const SpeechRecognitionAPI =
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 
+// When running inside the React Native WebView, the native app renders its own
+// virtual keyboard row below the WebView. Suppress the web version to avoid
+// two stacked keyboard bars on mobile.
+const isNativeWebView = !!(window as any).ReactNativeWebView;
+
 export default function VirtualKeyboard() {
+    if (isNativeWebView) return null;
     const [ctrlActive, setCtrlActive] = useState(false);
     const [altActive, setAltActive] = useState(false);
     const [shiftActive, setShiftActive] = useState(false);
