@@ -6,7 +6,62 @@ import type { RawData } from 'ws'
 import { Client, type ConnectConfig } from 'ssh2'
 import type { ClientChannel } from 'ssh2'
 import { SocksClient } from 'socks'
+import { log } from './logger'
+import crypto from 'crypto'
+import dotenv from 'dotenv'
+import webpush from 'web-push'
+import { saveSub, removeSub, getAllSubs, touchSub } from './pushStore'
 
+dotenv.config()
+
+// -- Web Push / VAPID setup --------------------------------------------------
+const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
+const VAPID_SUBJECT     = process.env.VAPID_SUBJECT
+
+const pushEnabled = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_SUBJECT)
+
+if (pushEnabled) {
+  webpush.setVapidDetails(VAPID_SUBJECT!, VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!)
+  log.debug('[push] Web Push enabled')
+} else {
+  log.debug('[push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — server-side push disabled')
+}
+
+async function sendPushToAll(payload: object) {
+  if (!pushEnabled) return
+  const subs = getAllSubs()
+  await Promise.allSettled(subs.map(async sub => {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify(payload))
+      touchSub(sub.endpoint)
+    } catch (err: any) {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        removeSub(sub.endpoint)
+      }
+    }
+  }))
+}
+
+// OSC patterns — mirrors Terminal.tsx signal parsing
+const OSC_RE = /\x1b\](\d+);([^\x07]*)\x07/g
+const DCS_RE = /\x1bPtmux;\x1b\x1b\](\d+);([^\x07]*)\x07\x1b\\/g
+
+function extractSignals(text: string): { type: string; tool?: string; message?: string }[] {
+  const signals: { type: string; tool?: string; message?: string }[] = []
+
+  function handle(code: string, payload: string) {
+    if (code === '9999') {
+      try { signals.push(JSON.parse(payload)) } catch { /* malformed */ }
+    } else if (code === '9') {
+      signals.push({ type: 'stop', tool: 'codex', message: payload })
+    }
+  }
+
+  for (const m of text.matchAll(OSC_RE)) handle(m[1], m[2])
+  for (const m of text.matchAll(DCS_RE)) handle(m[1], m[2])
+  return signals
+}
 // When stdout is piped (Docker / DigitalOcean) Node buffers output and log
 // lines can disappear or arrive late. Force synchronous writes so every
 // console.log flushes immediately.
@@ -30,9 +85,10 @@ function isTailscaleIP(host: string): boolean {
   return parts.length === 4 && parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127
 }
 
-function log(message: string) {
-  const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] ${message}`)
+const WSS_AUTH_KEY = process.env.WSS_AUTH_KEY
+
+if (!WSS_AUTH_KEY) {
+  log.warn('\x1b[33m[warn] WSS_AUTH_KEY is not set in environment. WebSocket authentication is disabled. This is insecure.\x1b[0m')
 }
 
 interface ConnectMessage {
@@ -43,6 +99,11 @@ interface ConnectMessage {
   password?: string
   privateKey?: string
   projectPath?: string
+  sessionName?: string
+  tmuxAttachIfExists?: boolean
+  tmuxDetachOthers?: boolean
+  tmuxMouseMode?: boolean
+  tmuxAllowPassthrough?: boolean
 }
 
 interface ResizeMessage {
@@ -56,11 +117,34 @@ const app = express()
 // Serve the compiled React frontend static files
 const webDistPath = path.join(__dirname, '../../web/dist')
 app.use(express.static(webDistPath))
+app.use(express.json())
 
 // Serve the install script for AI agent hook configuration
 app.get('/install.sh', (_req, res) => {
   res.setHeader('Content-Type', 'text/plain')
   res.sendFile(path.join(__dirname, '../../install.sh'))
+})
+
+// -- Push notification endpoints ---------------------------------------------
+
+app.get('/vapid-public-key', (_req, res) => {
+  if (!pushEnabled) { res.status(503).json({ error: 'push not configured' }); return }
+  res.json({ publicKey: VAPID_PUBLIC_KEY })
+})
+
+app.post('/subscribe', (req, res) => {
+  if (!pushEnabled) { res.status(503).json({ error: 'push not configured' }); return }
+  const sub = req.body
+  if (!sub?.endpoint) { res.status(400).json({ error: 'invalid subscription' }); return }
+  saveSub(sub)
+  log.debug(`[push] Subscription saved: ${sub.endpoint.slice(0, 60)}…`)
+  res.status(201).json({ ok: true })
+})
+
+app.post('/unsubscribe', (req, res) => {
+  const { endpoint } = req.body ?? {}
+  if (endpoint) removeSub(endpoint)
+  res.json({ ok: true })
 })
 
 // Catch-all route for SPA routing (returns index.html)
@@ -73,10 +157,59 @@ app.use((req, res, next) => {
 })
 
 const server = http.createServer(app)
-const wss = new WebSocketServer({ server })
+const wss = new WebSocketServer({ noServer: true })
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '', `http://${request.headers.host || 'localhost'}`)
+  log.debug(`[upgrade] Request URL: ${request.url}`)
+
+  // Enforce authentication if WSS_AUTH_KEY is set
+  if (WSS_AUTH_KEY) {
+    const timestamp = url.searchParams.get('timestamp')
+    const hash = url.searchParams.get('hash')
+    log.debug(`[auth] Timestamp: ${timestamp}, Hash: ${hash}`)
+
+    if (!timestamp || !hash) {
+      log.debug('[auth] Rejected connection: Missing authentication parameters')
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+      socket.destroy()
+      return
+    }
+
+    const ts = parseInt(timestamp, 10)
+    const now = Date.now()
+
+    // Prevent replay attacks (allow 60 seconds drift max)
+    if (isNaN(ts) || Math.abs(now - ts) > 60000) {
+      log.debug(`[auth] Rejected connection: Timestamp expired or invalid (diff: ${Math.abs(now - ts)}ms)`)
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+      socket.destroy()
+      return
+    }
+
+    // Verify HMAC
+    const expectedHash = crypto.createHmac('sha256', WSS_AUTH_KEY).update(timestamp).digest('hex')
+
+    // Use timingSafeEqual to prevent timing attacks
+    const providedHashBuffer = Buffer.from(hash, 'hex')
+    const expectedHashBuffer = Buffer.from(expectedHash, 'hex')
+
+    if (providedHashBuffer.length !== expectedHashBuffer.length || !crypto.timingSafeEqual(providedHashBuffer, expectedHashBuffer)) {
+      log.debug('[auth] Rejected connection: Invalid signature')
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+      socket.destroy()
+      return
+    }
+  }
+
+  // Handle standard WebSocket upgrade
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request)
+  })
+})
 
 wss.on('connection', (ws: WebSocket) => {
-  log('[connection] New WebSocket connection')
+  log.debug('[connection] New WebSocket connection')
   let ssh: Client | null = null
   let shell: ClientChannel | null = null
 
@@ -85,7 +218,7 @@ wss.on('connection', (ws: WebSocket) => {
   let pendingData: string[] = []
 
   function cleanup() {
-    log('[cleanup] Closing session')
+    log.debug('[cleanup] Closing session')
     shell?.close()
     ssh?.end()
     shell = null
@@ -95,7 +228,7 @@ wss.on('connection', (ws: WebSocket) => {
   }
 
   function sendError(message: string) {
-    log(`[error] Sending error to client: ${message}`)
+    // log.debug(`[error] Sending error to client: ${message}`)
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'error', message }))
     }
@@ -132,14 +265,14 @@ wss.on('connection', (ws: WebSocket) => {
         try {
           const msg = JSON.parse(text)
           if (msg.type === 'resize') {
-            log('[buffering] Buffering resize message during handshake')
+            log.debug('[buffering] Buffering resize message during handshake')
             pendingResize = msg as ResizeMessage
             return
           }
         } catch {
           // Raw text input
         }
-        log('[buffering] Buffering input data during handshake')
+        log.debug('[buffering] Buffering input data during handshake')
         pendingData.push(text)
       } else {
         // Binary input? ignoring for now or buffer as buffer?
@@ -162,12 +295,12 @@ wss.on('connection', (ws: WebSocket) => {
       return
     }
 
-    log(`[connect] Connecting to ${msg.username}@${msg.host}:${msg.port ?? 22}`)
+    log.debug(`[connect] Connecting to ${msg.username}@${msg.host}:${msg.port ?? 22}`)
 
     ssh = new Client()
 
     ssh.on('ready', () => {
-      log('[ssh] Authentication successful')
+      log.debug('[ssh] Authentication successful')
 
       startShell()
 
@@ -176,7 +309,7 @@ wss.on('connection', (ws: WebSocket) => {
         const cols = pendingResize?.cols ?? 80
         const term = 'xterm-256color'
 
-        log(`[ssh] Starting shell with size ${cols}x${rows}`)
+        log.debug(`[ssh] Starting shell with size ${cols}x${rows}`)
 
         const onShellReady = (err: Error | undefined, stream: ClientChannel) => {
           if (err) {
@@ -186,11 +319,11 @@ wss.on('connection', (ws: WebSocket) => {
           }
 
           shell = stream
-          log('[ssh] Shell started')
+          log.debug('[ssh] Shell started')
 
           // Flush pending data
           if (pendingData.length > 0) {
-            log(`[ssh] Flushing ${pendingData.length} buffered input chunks`)
+            log.debug(`[ssh] Flushing ${pendingData.length} buffered input chunks`)
             pendingData.forEach(chunk => stream.write(chunk))
             pendingData = []
           }
@@ -203,24 +336,52 @@ wss.on('connection', (ws: WebSocket) => {
 
           stream.on('data', (chunk: Buffer) => {
             if (ws.readyState === WebSocket.OPEN) ws.send(chunk)
+            // Detect OSC signals and deliver server-side push when the
+            // browser tab may be backgrounded or closed.
+            const text = chunk.toString('utf8')
+            const signals = extractSignals(text)
+            for (const signal of signals) {
+              const isStop = signal.type === 'stop'
+              const toolLabel = signal.tool ? ` · ${signal.tool}` : ''
+              const title = isStop ? `Task complete${toolLabel}` : `Notification${toolLabel}`
+              const body  = isStop ? '' : (signal.message ?? '')
+              sendPushToAll({ title, body, tag: signal.type }).catch(() => {})
+            }
           })
 
           stream.stderr.on('data', (chunk: Buffer) => {
-            log(`[ssh] stderr: ${chunk.toString()}`)
+            log.debug(`[ssh] stderr: ${chunk.toString()}`)
             if (ws.readyState === WebSocket.OPEN) ws.send(chunk)
           })
 
           stream.on('close', () => {
-            log('[ssh] Shell closed')
+            log.debug('[ssh] Shell closed')
             ws.close()
           })
         }
 
+        // Validate session name: only letters, digits, dash, underscore
+        const rawName = msg.sessionName ?? 'mobile-terminal'
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(rawName)) {
+          sendError(`Invalid tmux session name: "${rawName}". Only letters, digits, - and _ are allowed.`)
+          ws.close()
+          return
+        }
+        const sessionName = rawName
+        const newSessionFlags = [
+          msg.tmuxAttachIfExists !== false ? '-A' : '',
+          msg.tmuxDetachOthers !== false ? '-D' : '',
+        ].filter(Boolean).join(' ')
+        const setOpts = [
+          msg.tmuxMouseMode !== false ? 'set -g mouse on' : '',
+          msg.tmuxAllowPassthrough !== false ? 'set -g allow-passthrough on' : '',
+        ].filter(Boolean)
+        const setClause = setOpts.length ? ' \\; ' + setOpts.join(' \\; ') : ''
         let cmd = msg.projectPath
-          ? `tmux new-session -A -D -t . -c "${msg.projectPath}" -s cc \\; set -g mouse on \\; set -g allow-passthrough on`
-          : `tmux new-session -A -D -s cc \\; set -g mouse on \\; set -g allow-passthrough on`
+          ? `tmux new-session ${newSessionFlags} -t . -c "${msg.projectPath}" -s ${sessionName}${setClause}`
+          : `tmux new-session ${newSessionFlags} -s ${sessionName}${setClause}`
 
-        log(`[ssh] Spawning command: ${cmd}`)
+        log.debug(`[ssh] Spawning command: ${cmd}`)
         ssh!.exec(cmd, { pty: { term, rows, cols } }, onShellReady as any) // exec with pty
       }
     })
@@ -246,8 +407,8 @@ wss.on('connection', (ws: WebSocket) => {
         detail = `Host not found: ${msg.host} — check the hostname or IP address.`
       }
 
-      log(`[ssh] Error: ${err.message}`)
-      log(`[ssh] Diagnostic: ${detail}`)
+      log.debug(`[ssh] Error: ${err.message}`)
+      // log.debug(`[ssh] Diagnostic: ${detail}`)
       sendError(detail)
       ws.close()
     })
@@ -271,7 +432,7 @@ wss.on('connection', (ws: WebSocket) => {
       if (socks5Addr) {
         const [proxyHost, proxyPortStr] = socks5Addr.split(':')
         const proxyPort = parseInt(proxyPortStr ?? '1055', 10)
-        log(`[socks5] Tailscale IP detected — connecting via SOCKS5 proxy at ${socks5Addr}`)
+        log.debug(`[socks5] Tailscale IP detected — connecting via SOCKS5 proxy at ${socks5Addr}`)
         try {
           const { socket } = await SocksClient.createConnection({
             proxy: { host: proxyHost, port: proxyPort, type: 5 },
@@ -279,32 +440,32 @@ wss.on('connection', (ws: WebSocket) => {
             destination: { host: msg.host, port: msg.port ?? 22 },
           })
           config.sock = socket
-          log(`[socks5] SOCKS5 tunnel established to ${msg.host}:${msg.port ?? 22}`)
+          log.debug(`[socks5] SOCKS5 tunnel established to ${msg.host}:${msg.port ?? 22}`)
         } catch (err: any) {
-          log(`[socks5] SOCKS5 connection failed: ${err.message}`)
+          log.debug(`[socks5] SOCKS5 connection failed: ${err.message}`)
           sendError(`Tailscale SOCKS5 unavailable — is Tailscale running? (${err.message})`)
           ws.close()
           return
         }
       } else {
-        log(`[connect] Tailscale IP detected — TAILSCALE_SOCKS5 not set, attempting direct connection (requires native Tailscale on this machine)`)
+        log.debug(`[connect] Tailscale IP detected — TAILSCALE_SOCKS5 not set, attempting direct connection (requires native Tailscale on this machine)`)
       }
     }
 
-    log(`[ssh] Initiating SSH handshake to ${msg.host}:${msg.port ?? 22} (auth: ${msg.password ? 'password' : 'key'})`)
+    log.debug(`[ssh] Initiating SSH handshake to ${msg.host}:${msg.port ?? 22} (auth: ${msg.password ? 'password' : 'key'})`)
     ssh.connect(config)
   })
 
   ws.on('close', () => {
-    log('[ws] Client disconnected')
+    log.debug('[ws] Client disconnected')
     cleanup()
   })
   ws.on('error', (err) => {
-    log(`[ws] Error: ${err.message}`)
+    log.debug(`[ws] Error: ${err.message}`)
     cleanup()
   })
 })
 
 server.listen(PORT, () => {
-  log(`Relay listening on ws://localhost:${PORT}`)
+  log.debug(`Relay listening on ws://localhost:${PORT}`)
 })

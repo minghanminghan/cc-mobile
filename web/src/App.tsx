@@ -4,6 +4,8 @@ import TerminalWorkspace from './components/TerminalWorkspace'
 import ProfileList from './components/ProfileList'
 import type { Credentials } from './lib/relayClient'
 import { getCredentials, type Profile } from './lib/profiles'
+import TopNav from './components/TopNav'
+import { loadSettings, type AppSettings } from './lib/settings'
 
 type View = 'list' | 'form'
 
@@ -13,6 +15,7 @@ export default function App() {
   // If editing, this holds the initial values for the form
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>()
   const [error, setError] = useState<string | undefined>()
+  const [settings, setSettings] = useState<AppSettings>(loadSettings)
 
   // Check for React Native WebView injection on mount
   useEffect(() => {
@@ -24,7 +27,15 @@ export default function App() {
 
   function handleConnect(creds: Credentials) {
     setError(undefined)
-    setCredentials(creds)
+    const s = loadSettings()
+    setCredentials({
+      ...creds,
+      sessionName: s.tmuxSessionName || 'mobile-terminal',
+      tmuxAttachIfExists: s.tmuxAttachIfExists,
+      tmuxDetachOthers: s.tmuxDetachOthers,
+      tmuxMouseMode: s.tmuxMouseMode,
+      tmuxAllowPassthrough: s.tmuxAllowPassthrough,
+    })
   }
 
   function handleDisconnect(reason?: string) {
@@ -55,7 +66,7 @@ export default function App() {
   }
 
   if (credentials) {
-    return <TerminalWorkspace credentials={credentials} onDisconnect={handleDisconnect} />
+    return <TerminalWorkspace credentials={credentials} onDisconnect={handleDisconnect} terminalProfile={settings.terminalProfile} />
   }
 
 
@@ -76,20 +87,23 @@ export default function App() {
   }
 
   return (
-    <ProfileList
-      onConnect={handleProfileConnect}
-      error={error}
-      onEdit={(profile) => {
-        const creds = getCredentials(profile.id)
-        setEditingProfile({ ...profile, ...creds } as Profile)
-        setView('form')
-        setError(undefined)
-      }}
-      onNew={() => {
-        setEditingProfile(undefined)
-        setView('form')
-        setError(undefined)
-      }}
-    />
+    <div>
+      <TopNav onSettingsChange={setSettings} />
+      <ProfileList
+        onConnect={handleProfileConnect}
+        error={error}
+        onEdit={(profile) => {
+          const creds = getCredentials(profile.id)
+          setEditingProfile({ ...profile, ...creds } as Profile)
+          setView('form')
+          setError(undefined)
+        }}
+        onNew={() => {
+          setEditingProfile(undefined)
+          setView('form')
+          setError(undefined)
+        }}
+      />
+    </div>
   )
 }

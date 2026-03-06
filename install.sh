@@ -9,6 +9,14 @@ set -e
 INSTALL_DIR="$HOME/.local/bin"
 NOTIFY_SCRIPT="$INSTALL_DIR/mobile-notify"
 
+# Parse flags
+EVENTS="stop-only"
+for arg in "$@"; do
+  case "$arg" in
+    --events=*) EVENTS="${arg#--events=}" ;;
+  esac
+done
+
 # ── Help / list mode ──────────────────────────────────────────────────────────
 # Running with no arguments (or --list / --help) shows all available options
 # without installing anything.
@@ -100,16 +108,19 @@ if command -v claude > /dev/null 2>&1; then
   mkdir -p "$HOME/.claude"
   [ -f "$CLAUDE_SETTINGS" ] || echo '{}' > "$CLAUDE_SETTINGS"
 
-  python3 - "$CLAUDE_SETTINGS" << 'PYEOF'
+  python3 - "$CLAUDE_SETTINGS" "$EVENTS" << 'PYEOF'
 import json, sys
 
 path = sys.argv[1]
+events = sys.argv[2] if len(sys.argv) > 2 else "stop-only"
+
 with open(path) as f:
     cfg = json.load(f)
 
 hooks = cfg.setdefault("hooks", {})
 
 stop_cmd = "mobile-notify --type=stop --tool=claude"
+notify_cmd = "mobile-notify --type=notify --tool=claude"
 
 # Remove any old JSON-format commands from previous installs
 old_cmds = {
@@ -125,15 +136,24 @@ for event in ("Stop", "Notification"):
         if not hooks[event]:
             del hooks[event]
 
-# Configure Stop hook only (task completion)
+# Always configure Stop hook
 entries = hooks.setdefault("Stop", [])
-already = any(
-    h.get("command", "") == stop_cmd
-    for entry in entries
-    for h in entry.get("hooks", [])
-)
-if not already:
+if not any(h.get("command", "") == stop_cmd for entry in entries for h in entry.get("hooks", [])):
     entries.append({"hooks": [{"type": "command", "command": stop_cmd}]})
+
+# Configure Notification hook only when events=all
+if events == "all":
+    notif_entries = hooks.setdefault("Notification", [])
+    if not any(h.get("command", "") == notify_cmd for entry in notif_entries for h in entry.get("hooks", [])):
+        notif_entries.append({"hooks": [{"type": "command", "command": notify_cmd}]})
+elif "Notification" in hooks:
+    # Remove Notification hook if switching back to stop-only
+    hooks["Notification"] = [
+        e for e in hooks["Notification"]
+        if not any(h.get("command", "") == notify_cmd for h in e.get("hooks", []))
+    ]
+    if not hooks["Notification"]:
+        del hooks["Notification"]
 
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)

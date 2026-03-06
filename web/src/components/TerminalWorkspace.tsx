@@ -3,13 +3,15 @@ import Terminal from './Terminal'
 import VirtualKeyboard from './VirtualKeyboard'
 import SignalBanner from './SignalBanner'
 import type { Credentials, RelayClient } from '../lib/relayClient'
+import type { TerminalProfile } from '../lib/settings'
 
 interface Props {
     credentials: Credentials
     onDisconnect: (reason?: string) => void
+    terminalProfile?: TerminalProfile
 }
 
-export default function TerminalWorkspace({ credentials, onDisconnect }: Props) {
+export default function TerminalWorkspace({ credentials, onDisconnect, terminalProfile }: Props) {
     const clientRef = useRef<RelayClient | null>(null)
     const [showMenu, setShowMenu] = useState(false)
     const [showSetup, setShowSetup] = useState(false)
@@ -142,6 +144,7 @@ export default function TerminalWorkspace({ credentials, onDisconnect }: Props) 
                             credentials={credentials}
                             onDisconnect={handleDisconnect}
                             onClientReady={(client: RelayClient) => clientRef.current = client}
+                            terminalProfile={terminalProfile}
                         />
                     </div>
 

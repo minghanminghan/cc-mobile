@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { showLocalNotification } from '../lib/pushNotifications'
+import { loadSettings } from '../lib/settings'
 
 interface Signal {
   type: 'stop' | 'notify' | string
@@ -14,7 +16,7 @@ interface Toast {
 let nextId = 0
 
 function fire(signal: Signal) {
-  window.dispatchEvent(new CustomEvent('CC_SIGNAL', { detail: signal }))
+  window.dispatchEvent(new CustomEvent('MOBILE_TERMINAL_SIGNAL', { detail: signal }))
 }
 
 export default function SignalBanner() {
@@ -28,12 +30,26 @@ export default function SignalBanner() {
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== id))
       }, 5000)
+
+      // Fire a system notification when the tab is not in focus.
+      // Server-side push (relay) handles the fully-closed-tab case.
+      if (
+        loadSettings().pushNotificationsEnabled &&
+        Notification.permission === 'granted' &&
+        document.visibilityState !== 'visible'
+      ) {
+        const isStop   = signal.type === 'stop'
+        const toolLabel = signal.tool ? ` · ${signal.tool}` : ''
+        const title = isStop ? `Task complete${toolLabel}` : `Notification${toolLabel}`
+        const body  = isStop ? '' : (signal.message ?? '')
+        showLocalNotification(title, body, signal.type).catch(() => {})
+      }
     }
-    window.addEventListener('CC_SIGNAL', handle)
+    window.addEventListener('MOBILE_TERMINAL_SIGNAL', handle)
       // Console test helper: __signal__() or __signal__('notify', 'claude')
       ; (window as any).__signal__ = (type = 'stop', tool = 'test') => fire({ type, tool })
     return () => {
-      window.removeEventListener('CC_SIGNAL', handle)
+      window.removeEventListener('MOBILE_TERMINAL_SIGNAL', handle)
       delete (window as any).__signal__
     }
   }, [])

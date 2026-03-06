@@ -4,4 +4,6 @@ dist/
 .env.local
 *.local
 .claude
+
+deploy.yml
 mobile/

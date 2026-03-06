@@ -3,16 +3,19 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { connect, type Credentials, type RelayClient } from '../lib/relayClient'
+import { connect, type Credentials, type RelayClient, type HostKeyPrompt } from '../lib/relayClient'
+import { TERMINAL_THEMES } from '../lib/terminalThemes'
+import type { TerminalProfile } from '../lib/settings'
 
 interface Props {
   credentials: Credentials
   onDisconnect: (reason?: string) => void
   onClientReady?: (client: RelayClient) => void
+  terminalProfile?: TerminalProfile
   className?: string
 }
 
-export default function Terminal({ credentials, onDisconnect, onClientReady, className = '' }: Props) {
+export default function Terminal({ credentials, onDisconnect, onClientReady, terminalProfile = 'default', className = '' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const clientRef = useRef<RelayClient | null>(null)
   const termRef = useRef<XTerm | null>(null)
@@ -25,6 +28,9 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTouchRef = useRef<{ clientX: number, clientY: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null)
+
+  // SSH Host Key Verification
+  const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null)
 
   // Disable context menu
   useEffect(() => {
@@ -47,16 +53,12 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
   useEffect(() => {
     if (!containerRef.current) return
 
+    const { theme, fontSize, fontFamily } = TERMINAL_THEMES[terminalProfile]
     const term = new XTerm({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", monospace',
-      theme: {
-        background: '#09090b', // zinc-950 to match app theme
-        foreground: '#e4e4e4',
-        cursor: '#e4e4e4',
-        selectionBackground: '#ffffff40',
-      },
+      fontSize,
+      fontFamily,
+      theme,
       allowProposedApi: true,
       scrollback: 10000,
     })
@@ -94,16 +96,16 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
       credentials,
       (chunk) => {
         // Scan for OSC signals before handing bytes to xterm.js.
-        // OSC 9999 = cc-mobile custom protocol (JSON payload).
+        // OSC 9999 = mobile-terminal custom protocol (JSON payload).
         // OSC 9    = Codex CLI native notifications (plain-text payload).
         // xterm.js silently drops unknown OSC codes so no stripping is needed.
         const text = new TextDecoder().decode(chunk)
 
         function dispatchSignal(signal: any) {
           if ((window as any).ReactNativeWebView) {
-            ;(window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'SIGNAL', signal }))
+            ; (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'SIGNAL', signal }))
           } else {
-            window.dispatchEvent(new CustomEvent('CC_SIGNAL', { detail: signal }))
+            window.dispatchEvent(new CustomEvent('MOBILE_TERMINAL_SIGNAL', { detail: signal }))
           }
         }
 
@@ -124,7 +126,8 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
         for (const m of text.matchAll(DCS_RE)) handleOscCode(m[1], m[2])
         term.write(chunk)
       },
-      (reason) => onDisconnect(reason)
+      (reason) => onDisconnect(reason),
+      (prompt) => setHostKeyPrompt(prompt)
     )
     clientRef.current = client
     onClientReady?.(client)
@@ -294,7 +297,7 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
   useEffect(() => {
     if (!contextMenu) return
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if ((e.target as Element).closest('.cc-context-menu')) return
+      if ((e.target as Element).closest('.mobile-terminal-context-menu')) return
       setContextMenu(null)
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -361,10 +364,47 @@ export default function Terminal({ credentials, onDisconnect, onClientReady, cla
         onTouchCancel={handleTouchEnd}
       />
 
+      {/* SSH Host Key Verification Modal */}
+      {hostKeyPrompt && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 shadow-xl rounded-xl p-6 w-full max-w-sm text-center">
+            <h3 className="text-white text-lg font-semibold mb-2">Unknown Host</h3>
+            <p className="text-zinc-400 text-sm mb-6">
+              The authenticity of host <strong>{hostKeyPrompt.host}</strong> can't be established.<br className="mb-2" />
+              <span className="opacity-80 break-words">{hostKeyPrompt.fingerprint}</span><br className="mb-2" />
+              <br />
+              Are you sure you want to continue connecting?
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  clientRef.current?.sendHostKeyResponse(false, hostKeyPrompt.host)
+                  setHostKeyPrompt(null)
+                  termRef.current?.focus()
+                }}
+                className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white font-medium rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  clientRef.current?.sendHostKeyResponse(true, hostKeyPrompt.host, hostKeyPrompt.fingerprint)
+                  setHostKeyPrompt(null)
+                  termRef.current?.focus()
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Custom Context Menu */}
       {contextMenu && (
         <div
-          className="cc-context-menu fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 flex flex-col w-48 text-zinc-300 text-sm animate-in fade-in zoom-in-95 duration-150"
+          className="mobile-terminal-context-menu fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 flex flex-col w-48 text-zinc-300 text-sm animate-in fade-in zoom-in-95 duration-150"
           style={{
             top: `${Math.min(contextMenu.y, window.innerHeight - 300)}px`,
             left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`

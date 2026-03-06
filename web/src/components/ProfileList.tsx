@@ -49,7 +49,7 @@ export default function ProfileList({ onConnect, onEdit, onNew, error }: Props) 
             <p className="text-zinc-500 mb-4">No saved projects yet.</p>
             <button
               onClick={onNew}
-              className="text-white underline hover:text-zinc-300 transition-colors"
+              className="text-white underline hover:text-zinc-300 transition-colors cursor-pointer"
             >
               Create your first project
             </button>
@@ -66,7 +66,7 @@ export default function ProfileList({ onConnect, onEdit, onNew, error }: Props) 
                   <div className="flex gap-2">
                     <button
                       onClick={() => onEdit(profile)}
-                      className="text-zinc-500 hover:text-white p-1"
+                      className="text-zinc-500 hover:text-white p-1 cursor-pointer"
                       title="Edit"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -76,7 +76,7 @@ export default function ProfileList({ onConnect, onEdit, onNew, error }: Props) 
                     </button>
                     <button
                       onClick={() => handleDelete(profile.id)}
-                      className="text-zinc-500 hover:text-red-400 p-1"
+                      className="text-zinc-500 hover:text-red-400 p-1 cursor-pointer"
                       title="Delete"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -89,16 +89,14 @@ export default function ProfileList({ onConnect, onEdit, onNew, error }: Props) 
 
                 <div className="text-zinc-400 text-sm font-mono mb-4 truncate">
                   {profile.username}@{profile.host}:{profile.port}
-                  {profile.projectPath && (
-                    <span className="block mt-1 text-zinc-500">
-                      <span className="mr-1">↳</span>{profile.projectPath}
-                    </span>
-                  )}
+                  {<span className="block mt-1 text-zinc-500">
+                      <span className="mr-1">↳</span>{profile.projectPath ?? '~'}
+                    </span>}
                 </div>
 
                 <button
                   onClick={() => onConnect(profile)}
-                  className="w-full bg-zinc-800 text-zinc-200 py-2 rounded text-sm font-medium group-hover:bg-zinc-700 hover:text-white transition-colors"
+                  className="w-full bg-zinc-800 text-zinc-200 py-2 rounded text-sm font-medium group-hover:bg-zinc-700 hover:text-white transition-colors cursor-pointer"
                 >
                   Connect
                 </button>
