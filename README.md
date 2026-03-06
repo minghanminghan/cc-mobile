@@ -1,6 +1,6 @@
 # mobile-terminal
 
-Use your terminal coding agents from any browser or phone. SSH into your server and get a full interactive terminal -- no local dev environment required. This project additionally offers custom hooks for Claude Code, Codex CLI, Gemini CLI, Opencode that feed back into the app and notify you when coding agents finish their tasks.
+Access coding agents from any browser or phone through SSH. Additional hooks available for download for Claude Code, Codex CLI, Gemini CLI, Opencode that send a push notification you when coding agents finish their tasks.
 
 ---
 
@@ -8,45 +8,40 @@ Use your terminal coding agents from any browser or phone. SSH into your server 
 
 ### Coding Agent Hooks
 
-Run a one-time install script on your remote server and mobile-terminal will display a banner whenever a coding agent finishes a task — no polling, no watching the screen. Signals travel through the existing SSH connection as OSC escape sequences, so there is no cloud API, no webhook, and nothing new to expose to the internet.
+After installing custom hooks, mobile-terminal will send a push notification whenever the coding agent finishes a task as an OSC escape sequence through the existing SSH connection. When the agent sends a notification can be customized in settings.
 
+<!-- TODO: figure out notification frequency (maybe add as settings)
 When a task completes, a green **Task complete · claude** banner appears at the top of the terminal and auto-dismisses after five seconds. Notifications (mid-task pings) appear as a blue bell banner.
+-->
 
-Supported tools and how each integrates:
+Supported coding agents:
 
-- **Claude Code** — adds a `Stop` hook to `~/.claude/settings.json`. Use `claude` as normal.
-- **Codex CLI** — enables native OSC 9 notifications in `~/.codex/config.toml`. Use `codex` as normal.
-- **Gemini CLI** — adds an `AfterAgent` hook to `~/.gemini/settings.json`. Use `gemini` as normal.
-- **OpenCode** — installs a plugin in `~/.config/opencode/plugins/`. Use `opencode` as normal.
+- **Claude Code**
+- **Codex CLI**
+- **Gemini CLI**
+- **OpenCode**
 
-Access the install command from the **Settings → AI Agent Hooks** menu inside the terminal, or see the [AI Agent Hooks](#ai-agent-hooks-optional) section below.
+### Session Continuity and Multiplexing with tmux
 
-### Seamless Session Continuity
-Start work on your laptop, close the browser, reopen on your phone, and pick up exactly where you left off. The relay uses `tmux new-session -A -D` to attach existing sessions.
-
-### Connection Profiles
-Save SSH credentials and project paths for one-tap reconnect. Secrets (passwords, private keys) are stored in `sessionStorage` on web (cleared when the tab closes) and in the platform keychain on mobile (iOS Keychain / Android Keystore) -- never on the relay server.
-
-### Mobile-Optimized UX
-- **Virtual control row** -- scrollable bar with ESC, TAB, CTRL, ALT, SHIFT, DEL, and arrow keys
-- **Long-press context menu** -- trigger tmux pane operations (split horizontal/vertical, swap, zoom, kill) without keyboard shortcuts
-- **Native mouse mode** -- drag tmux pane borders with your finger to resize
-
-### Voice Input
-Tap the mic button in the virtual keyboard row to dictate instead of type. Transcription runs on-device via the browser's Web Speech API -- no cloud API, no external requests. The result appears in an editable preview overlay before anything is sent to the terminal, so a mis-heard command can't execute before you catch it.
+By default, the relay module uses `tmux new-session -A -D` to attach to existing sessions. This can be modified in settings.
 
 ### Tailscale Integration
-Set `TAILSCALE_AUTH_KEY` and the relay joins your Tailscale network on boot. Use Tailscale IPs (`100.x.x.x`) as the SSH host to reach machines on your Tailnet without any port forwarding or exposing services to the internet.
 
----
+When both the relay host and the SSH target have Tailscale installed, you can connect via Tailscale IPs (100.x.x.x) without opening any ports to the internet. No configuration needed on the relay — the OS routes Tailscale addresses directly.
 
-## Security
+### Mobile-Optimized UX
 
-- Credentials are sent once over the WebSocket and held in memory only for the duration of the SSH session
-- Private keys are never written to disk on the relay
-- Web: secrets live in `sessionStorage` and are cleared when the tab closes
-- Mobile: secrets are encrypted via `expo-secure-store` (iOS Keychain / Android Keystore)
-- Voice input uses the browser's on-device speech engine -- no audio leaves the device
+- **Virtual control row** -- scrollable bar with ESC, TAB, CTRL, ALT, SHIFT, DEL, and arrow keys
+- **Long-press context menu** -- triggers tmux pane operations (split horizontal/vertical, swap, zoom, kill)
+- **Native mouse mode** -- drag tmux pane borders to resize
+
+### Voice Input
+
+Tap the mic button in the virtual keyboard row to dictate. Transcription runs on-device via the browser's Web Speech API, and the result appears in an editable preview overlay before sending to terminal.
+
+### Connection Profiles
+
+Secrets (passwords, private keys) are hashed and stored in `sessionStorage` and never persisted on the relay server.
 
 ---
 
@@ -54,59 +49,31 @@ Set `TAILSCALE_AUTH_KEY` and the relay joins your Tailscale network on boot. Use
 
 ### Required
 
-**tmux** -- mobile-terminal attaches to a tmux session on connect (`tmux new-session -A -s cc`). This is what keeps your terminal alive when you close the browser and lets you reattach from a different device. Without tmux the session ends the moment the WebSocket drops.
-
-**WSL (Windows only)** -- Windows does not ship an SSH server or a native Unix shell. WSL (Windows Subsystem for Linux) provides both. Mac and Linux users can skip this.
-
-### Recommended (Optional)
-
-**Tailscale** -- Lets you connect to your machine using a private Tailscale IP (`100.x.x.x`) instead of opening a port to the public internet. Install it on the machine you want to SSH into and on the device running the relay. See the Tailscale step in the setup guide below.
-
-**Browser with Web Speech API** -- Voice to text is supported on Chrome, Edge, and Safari (iOS 14.5+). The button is hidden automatically on unsupported browsers.
-
----
-
-## Architecture
-
-```
-[Browser / React Native WebView]
-   xterm.js terminal
-        |
-        | WebSocket
-        |
-[Relay Server -- Node.js, port 3001]
-   Express (static files) + ws + ssh2
-        |
-        | SSH
-        |
-[Your Remote Server]
-   tmux → shell → claude CLI
+**WSL (Windows only)**
+```powershell
+wsl --install
+wsl
 ```
 
-The relay is stateless. It accepts a WebSocket, opens an SSH PTY on the remote server, and pipes raw bytes in both directions. Credentials are never written to disk on the relay.
+**tmux**
+```bash
+sudo apt install tmux
+```
 
-### Layers
+### Recommended
 
-**`relay/`** -- Node.js WebSocket-to-SSH bridge. Handles the connect/resize message protocol, spawns a tmux session on the remote, and forwards I/O.
+**Tailscale (required on both host and client devices)**
+```bash
+# bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4     # gives your Tailnet IP for Tailscale SSH
+```
 
-**`web/`** -- React + Vite frontend. Runs xterm.js, manages profiles, handles touch events, and renders the virtual keyboard (including voice input).
+```powershell
+# powershell
 
-**`mobile/`** -- React Native + Expo shell. Wraps the web frontend in a WebView, injects credentials on load, and provides native secure storage.
-
----
-
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
-| Terminal | xterm.js (fit + web-links addons) |
-| Relay | Node.js 22, Express, `ws`, `ssh2` |
-| Mobile | React Native, Expo, WebView, expo-secure-store |
-| Networking | Tailscale (optional), SOCKS5 proxy support |
-| Deployment | Docker (Alpine Linux, Node.js 22) |
-
----
+```
 
 ## Quick Start
 
@@ -120,27 +87,7 @@ git clone https://github.com/minghanminghan/mobile-terminal.git
 
 ```bash
 docker build -t mobile-terminal .
-docker run -p 3001:3001 mobile-terminal
-```
-
-Open `http://localhost:3001`.
-
-### With Tailscale
-
-```bash
-docker run -p 3001:3001 \
-  -e TAILSCALE_AUTH_KEY=tskey-auth-... \
-  mobile-terminal
-```
-
-The container registers as `mobile-terminal-app` on your Tailnet. Approve the device in the Tailscale admin console on first run, or use a pre-approved auth key.
-
-### Without Docker
-
-```bash
-npm install
-npm run build -w web       # build the React frontend
-npm run start:node         # relay + static server on :3001
+docker run -p 3001:3001 mobile-terminal   # runs at localhost:3001
 ```
 
 ### Development
@@ -149,174 +96,17 @@ npm run start:node         # relay + static server on :3001
 npm install
 npm run dev -w web         # Vite dev server on :5173 with HMR
 npm run dev -w relay       # relay on :3001 with ts watch
-
-# Mobile
-cd mobile && npx expo start
 ```
 
 ---
 
-## Starting an SSH Server
+## Stack
 
-### Mac / Linux
-
-**1. Install tmux**
-
-```bash
-# macOS
-brew install tmux
-
-# Ubuntu / Debian
-sudo apt install tmux
-
-# Fedora / RHEL
-sudo dnf install tmux
-```
-
-**2. Enable the SSH server**
-
-```bash
-# macOS -- enable Remote Login in System Settings > General > Sharing
-# or from the terminal:
-sudo systemsetup -setremotelogin on
-
-# Ubuntu / Debian
-sudo apt install openssh-server
-sudo systemctl enable --now ssh
-
-# Fedora / RHEL
-sudo dnf install openssh-server
-sudo systemctl enable --now sshd
-```
-
-**3. Find your local IP**
-
-```bash
-# macOS
-ipconfig getifaddr en0
-
-# Linux
-ip addr show | grep "inet " | grep -v 127.0.0.1
-```
-
-Use this IP as the host in mobile-terminal. Your username is the output of `whoami`.
-
----
-
-### Windows (requires WSL)
-
-**1. Install WSL**
-
-Open PowerShell as Administrator and run:
-
-```powershell
-wsl --install
-```
-
-Restart when prompted. This installs WSL 2 with Ubuntu by default.
-
-**2. Install tmux inside WSL**
-
-```bash
-sudo apt update && sudo apt install tmux openssh-server
-```
-
-**3. Start the SSH server inside WSL**
-
-```bash
-sudo service ssh start
-```
-
-To start SSH automatically when WSL launches, add that line to your `~/.bashrc` or `~/.profile`.
-
-**4. Find your WSL IP**
-
-```bash
-hostname -I | awk '{print $1}'
-```
-
-Use this IP as the host in mobile-terminal. Your username is the output of `whoami` inside WSL.
-
-> Note: The WSL IP changes on each reboot. For a stable address, use Tailscale (see below).
-
----
-
-### (Optional) Tailscale -- stable private IP across reboots and networks
-
-Tailscale assigns your machine a permanent private IP (`100.x.x.x`) that works from anywhere without port forwarding. This removes the need to look up your local IP each time and lets you connect from outside your home network.
-
-**1. Install Tailscale on the SSH host**
-
-```bash
-# macOS
-brew install tailscale
-
-# Ubuntu / Debian / WSL
-curl -fsSL https://tailscale.com/install.sh | sh
-```
-
-**2. Start and authenticate**
-
-```bash
-sudo tailscale up
-```
-
-Follow the link to log in. After authentication, run:
-
-```bash
-tailscale ip -4
-```
-
-This is your stable Tailscale IP. Use it as the host in mobile-terminal from any device on your Tailnet.
-
-**3. (Optional) Connect the relay to your Tailnet too**
-
-If you're running mobile-terminal via Docker and want the relay itself to reach Tailnet addresses, pass your Tailscale auth key (generated in settings) at startup:
-
-```bash
-docker run -p 3001:3001 \
-  -e TAILSCALE_AUTH_KEY=tskey-auth-... \
-  mobile-terminal
-```
-
----
-
-## Environment Variables
-
-| Variable             | Default        | Description                                                                                                    |
-|---                   |---             |---                                                                                                             |
-| `PORT`               | `3001`         | Port the relay and web server listen on                                                                        |
-| `TAILSCALE_AUTH_KEY` | --             | If set, starts Tailscale in userspace mode and joins your Tailnet on boot                                      |
-| `TAILSCALE_SOCKS5`   | `localhost:1055` when `TAILSCALE_AUTH_KEY` is set | Override the SOCKS5 proxy address for Tailscale IPs. Only needed if running tailscaled on a non-standard port |
-| `VITE_RELAY_URL`     | auto-detected  | Override the WebSocket relay URL in the browser. Useful in dev when the relay is on a different host than the Vite dev server |
-
----
-
-## AI Agent Hooks (Optional)
-
-Run this once on your remote server to configure your AI coding tools to send completion signals back to the terminal UI. When a task finishes, a banner appears in mobile-terminal — no polling, no watching the screen.
-
-**From the hosted app:**
-
-```bash
-curl -fsSL https://cc-mobile-3jd6f.ondigitalocean.app/install.sh | bash
-```
-
-**From a self-hosted relay** (the script is served automatically):
-
-```bash
-curl -fsSL http://<your-relay-host>:3001/install.sh | bash
-```
-
-**Or copy `install.sh` directly from this repo** and run it on the server.
-
-The script detects which tools are installed and configures only those:
-
-| Tool | What it does |
+| Layer | Technology |
 |---|---|
-| **Claude Code** | Adds `Stop` hook to `~/.claude/settings.json` — use `claude` as normal |
-| **Codex CLI** | Enables OSC 9 notifications in `~/.codex/config.toml` — use `codex` as normal |
-| **Gemini CLI** | Adds `AfterAgent` hook to `~/.gemini/settings.json` — use `gemini` as normal |
-| **OpenCode** | Installs a plugin in `~/.config/opencode/plugins/` — use `opencode` as normal |
-
-Safe to re-run. Only touches config for tools that are already installed.
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
+| Terminal | xterm.js (fit + web-links addons) |
+| Relay | Node.js 22, Express, `ws`, `ssh2` |
+| Mobile | React Native, Expo, WebView, expo-secure-store |
+| Networking | Tailscale (optional), SOCKS5 proxy support |
+| Deployment | Docker (Alpine Linux, Node.js 22) |

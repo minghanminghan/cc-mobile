@@ -262,16 +262,11 @@ wss.on('connection', (ws: WebSocket) => {
     if (msg.password) config.password = msg.password
     if (msg.privateKey) config.privateKey = msg.privateKey
 
-    // Tailscale userspace networking has no kernel routes for 100.x.x.x —
-    // connect through Tailscale's local SOCKS5 proxy and hand the socket to ssh2.
-    // Resolution order:
-    //   1. TAILSCALE_SOCKS5 — explicit address (e.g. localhost:1055)
-    //   2. TAILSCALE_AUTH_KEY set — tailscaled was started by start.sh with
-    //      --socks5-server=localhost:1055, so we know the default port is live
-    //   3. Neither set — native dev, OS kernel routes Tailscale IPs directly
-    const socks5Addr =
-      process.env.TAILSCALE_SOCKS5 ??
-      (process.env.TAILSCALE_AUTH_KEY ? 'localhost:1055' : undefined)
+    // If TAILSCALE_SOCKS5 is set, route Tailscale IPs through the local SOCKS5 proxy.
+    // Required when running in Docker with userspace networking (no kernel TUN device).
+    // When Tailscale is installed natively on the relay machine, leave this unset and
+    // the OS kernel routes 100.x.x.x addresses directly.
+    const socks5Addr = process.env.TAILSCALE_SOCKS5
     if (isTailscaleIP(msg.host)) {
       if (socks5Addr) {
         const [proxyHost, proxyPortStr] = socks5Addr.split(':')
